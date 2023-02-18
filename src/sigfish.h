@@ -6,11 +6,10 @@
 #define SIGFISH_H
 
 #include <stdint.h>
-#include "slow5/slow5.h"
 
-#ifdef FPGA
-#include <haru.h>
-#endif
+#include <stdint.h>
+#include "slow5/slow5.h"
+#include "shared.h"
 
 #define SIGFISH_VERSION "0.1.0"
 
@@ -84,6 +83,12 @@ typedef struct {
 
     float **forward;
     float **reverse;
+    
+#ifdef TEST_SCALING
+    SIG_DTYPE **forward_scaled;
+    SIG_DTYPE **reverse_scaled;
+#endif
+
 } refsynth_t;
 
 
@@ -206,9 +211,7 @@ typedef struct {
 
     refsynth_t *ref;
 
-#ifdef FPGA
-    haru_t *haru;
-#endif
+
 
 } core_t;
 

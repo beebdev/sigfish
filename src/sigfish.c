@@ -21,8 +21,6 @@
 #include <unistd.h>
 
 
-
-
 /* initialise the core data structure */
 core_t* init_core(const char *fastafile, char *slow5file, opt_t opt,double realtime0) {
 
@@ -95,39 +93,24 @@ core_t* init_core(const char *fastafile, char *slow5file, opt_t opt,double realt
     //synthetic reference
     core->ref = gen_ref(fastafile,core->model,kmer_size,opt.flag, opt.query_size);
 
-#ifdef FPGA
-    core->haru = (haru_t *)malloc(sizeof(haru_t));
-    MALLOC_CHK(core->haru);
+#ifdef TEST_SCALING
+    /* init scaled reference */
+    core->ref->forward_scaled = (SIG_DTYPE**)malloc(sizeof(SIG_DTYPE*) * core->ref->num_ref);
+    MALLOC_CHK(core->ref->forward_scaled);
+    core->ref->reverse_scaled = (SIG_DTYPE**)malloc(sizeof(SIG_DTYPE*) * core->ref->num_ref);
+    MALLOC_CHK(core->ref->reverse_scaled);
 
-    int ret = haru_init(core->haru);
-    if (ret != 0) {
-        ERROR("%s","haru_init failed\n");
-        exit(EXIT_FAILURE);
+    for (int i = 0; i < core->ref->num_ref; i++) {
+        core->ref->forward_scaled[i]= (SIG_DTYPE*) malloc(sizeof(SIG_DTYPE) * core->ref->ref_lengths[i]);
+        MALLOC_CHK(core->ref->forward_scaled[i]);
+        core->ref->reverse_scaled[i]= (SIG_DTYPE*) malloc(sizeof(SIG_DTYPE) * core->ref->ref_lengths[i]);
+        MALLOC_CHK(core->ref->reverse_scaled[i]);
+
+        for (int j = 0; j < core->ref->ref_lengths[i]; j++) {
+            core->ref->forward_scaled[i][j] = (SIG_DTYPE) (core->ref->forward[i][j] * SCALING);
+            core->ref->reverse_scaled[i][j] = (SIG_DTYPE) (core->ref->reverse[i][j] * SCALING);
+        }
     }
-
-    if(core->ref->num_ref>1){
-        ERROR("%s","The FPGA version currently only supports one reference");
-        exit(EXIT_FAILURE);
-    }
-
-    int32_t rlen = core->ref->ref_lengths[0];
-    int32_t *ref = (int32_t *)malloc(sizeof(int32_t) * rlen * 2);
-    MALLOC_CHK(ref);
-
-    for(int i=0;i<rlen;i++){
-        ref[i] = (int32_t) (core->ref->forward[0][i] * 32);
-        ref[i+rlen] = (int32_t) (core->ref->reverse[0][i] *32);
-    }
-
-    // haru_get_load_done(core->haru);
-    if (haru_load_reference(core->haru, ref, rlen * 2) == 0) {
-        ERROR("%s","Load reference incomplete\n");
-        exit(EXIT_FAILURE);
-    }
-    haru_get_load_done(core->haru);
-
-    free(ref);
-
 #endif
 
     core->opt = opt;
@@ -162,9 +145,13 @@ void free_core(core_t* core,opt_t opt) {
 
     slow5_close(core->sf);
 
-#ifdef FPGA
-    haru_release(core->haru);
-    free(core->haru);
+#ifdef TEST_SCALING
+    for (int i = 0; i < core->ref->num_ref; i++) {
+        free(core->ref->forward_scaled[i]);
+        free(core->ref->reverse_scaled[i]);
+    }
+    free(core->ref->forward_scaled);
+    free(core->ref->reverse_scaled);
 #endif
 
     free(core);
@@ -649,15 +636,15 @@ void work_per_single_read(core_t* core,db_t* db, int32_t i){
     event_single(core,db,i);
     normalise_single(core,db,i);
 
-#ifndef FPGA
+#ifndef TEST_SCALING
     dtw_single(core,db,i);
 #endif
 
 }
 
-#ifdef FPGA
+#ifdef TEST_SCALING
 
-void dtw_fpga(core_t* core,db_t* db){
+void dtw_scaling(core_t* core,db_t* db){
     int32_t i=0;
     for (i = 0; i < db->n_rec; i++) {
 
@@ -690,47 +677,53 @@ void dtw_fpga(core_t* core,db_t* db){
 
             int32_t rlen = core->ref->ref_lengths[0];
 
-
-
-            int32_t *query_r = (int32_t *)malloc(sizeof(int32_t)*(qlen+2));
-            MALLOC_CHK(query_r);
-            query_r[0]=i;
-            query_r[1]=0;
-
-            int32_t *query = &query_r[2];
+            SIG_DTYPE *query = (SIG_DTYPE *)malloc(sizeof(SIG_DTYPE)*(qlen));
+            MALLOC_CHK(query);
 
             for(int j=0;j<qlen;j++){
                 if (!(core->opt.flag & SIGFISH_INV) && rna){
-                    query[qlen-1-j] = (int32_t) (db->et[i].event[j+start_idx].mean * 32);
+                    query[qlen-1-j] = (SIG_DTYPE) (db->et[i].event[j+start_idx].mean * SCALING);
                 }
                 else{
-                    query[j] = (int32_t) (db->et[i].event[j+start_idx].mean * 32);
+                    query[j] = (SIG_DTYPE) (db->et[i].event[j+start_idx].mean * SCALING);
+                }
+                // fprintf(stderr,"%d ",query[j]);
+            }
+
+            COST_DTYPE *cost = (COST_DTYPE *)malloc(sizeof(COST_DTYPE)*(qlen*rlen));
+            MALLOC_CHK(cost);
+
+            /* Forward */
+            _hw_sdtw(query, core->ref->forward_scaled[0], qlen, rlen, cost);
+            COST_DTYPE my_min_score = cost[(qlen-1)*rlen];
+            for (int j = 0; j < rlen; j++) {
+                if (cost[(qlen-1)*rlen+j] < my_min_score) {
+                    my_min_score = cost[(qlen-1)*rlen+j];
+                    db->aln[i].pos_st = j;
+                    db->aln[i].pos_end = db->aln[i].pos_st - 250;
+                    db->aln[i].d = '+';
                 }
             }
 
-            search_result_t results;
-            haru_process_query(core->haru, query_r, qlen+2, &results);
-
-            free(query_r);
-
-
-            db->aln[i].score = ((float)results.score)/32.0;
-            db->aln[i].score2 = ((float)results.score)/32.0;
-            if (results.position > rlen) {
-                // reverse
-                db->aln[i].pos_st = 2*rlen - results.position;
-                db->aln[i].pos_end = db->aln[i].pos_st + 250;
-                db->aln[i].d = '-';
-            } else {
-                // forward
-                db->aln[i].pos_end = results.position;
-                db->aln[i].pos_st = results.position - 250;
-                db->aln[i].d = '+';
+            /* Reverse */
+            _hw_sdtw(query, core->ref->reverse_scaled[0], qlen, rlen, cost);
+            for (int j = 0; j < rlen; j++) {
+                if (cost[(qlen-1)*rlen+j] < my_min_score) {
+                    my_min_score = cost[(qlen-1)*rlen+j];
+                    db->aln[i].pos_st = rlen - j;
+                    db->aln[i].pos_end = db->aln[i].pos_st + 250;
+                    db->aln[i].d = '-';
+                }
             }
 
+            // === 
+            db->aln[i].score = ((float)my_min_score)/SCALING;
+            db->aln[i].score2 = ((float)my_min_score)/SCALING;
             db->aln[i].rid = 0;
             db->aln[i].mapq = 60;
 
+            free(query);
+            free(cost);
             free(aln);
         }
 
@@ -744,8 +737,8 @@ void process_db(core_t* core,db_t* db){
     double proc_start = realtime();
     work_db(core, db, work_per_single_read);
 
-#ifdef FPGA
-    dtw_fpga(core,db);
+#ifdef TEST_SCALING
+    dtw_scaling(core,db);
 #endif
 
     double proc_end = realtime();
@@ -780,7 +773,7 @@ void output_db(core_t* core, db_t* db) {
 
 
             printf("%s\t",db->slow5_rec[i]->read_id); // Query sequence name
-            printf("%d\t%ld\t%ld\t", db->et[i].n, start_idx,end_idx); // Query sequence length, start, end (in terms of events)
+            printf("%ld\t%ld\t%ld\t", db->et[i].n, start_idx,end_idx); // Query sequence length, start, end (in terms of events)
             printf("%c\t",db->aln[i].d); // Direction
             printf("%s\t",core->ref->ref_names[db->aln[i].rid]); // Target sequence name
             printf("%d\t",core->ref->ref_seq_lengths[db->aln[i].rid]); // Target sequence length

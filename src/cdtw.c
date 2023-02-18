@@ -225,3 +225,103 @@ subsequence_path(float *cost, int n, int m, int starty, Path *p)
 
   return 1;
 }
+
+
+
+// ======================================================================
+
+COST_DTYPE hw_pe(SIG_DTYPE x, SIG_DTYPE y, COST_DTYPE n, COST_DTYPE m, COST_DTYPE nw) {
+    COST_DTYPE min = n;
+    if (m < min) min = m;
+    if (nw < min) min = nw;
+
+    COST_DTYPE cost;
+    if (x > y) cost = (COST_DTYPE) (x - y);
+    else cost = (COST_DTYPE) (y - x);
+
+    return cost + min;
+}
+
+void hw_subsequence(float *x, float *y, int n, int m, float *cost)
+{
+    SIG_DTYPE *scaled_x = (SIG_DTYPE *) malloc(n * sizeof(SIG_DTYPE));
+    SIG_DTYPE *scaled_y = (SIG_DTYPE *) malloc(m * sizeof(SIG_DTYPE));
+    COST_DTYPE *scaled_cost = (COST_DTYPE *) malloc(n * m * sizeof(COST_DTYPE));
+
+    int i, j;
+    for (i = 0; i < n; i++) {
+        scaled_x[i] = (SIG_DTYPE) (x[i] * SCALING);
+    }
+
+    for (j = 0; j < m; j++) {
+        scaled_y[j] = (SIG_DTYPE) (y[j] * SCALING);
+    }
+
+    // ===
+    _sw_sdtw(scaled_x, scaled_y, n, m, scaled_cost);
+
+    // ===
+
+    for (i = 0; i < n; i++) {
+        for (j = 0; j < m; j++) {
+            cost[i * m + j] = ((float) scaled_cost[i * m + j]) / SCALING;
+        }
+    }
+}
+
+void _hw_sdtw(SIG_DTYPE *scaled_x, SIG_DTYPE *scaled_y, int n, int m, COST_DTYPE *scaled_cost) {
+    int i, j;
+
+    // First row
+    for (j = 0; j < m; j++) {
+        scaled_cost[j] = hw_pe(scaled_x[0], scaled_y[j], 0, 0, 0);
+        // printf("%d ", scaled_cost[j]);
+    }
+
+    // First column
+    for (i = 1; i < n; i++) {
+        scaled_cost[i*m] = hw_pe(scaled_x[i], scaled_y[0], scaled_cost[(i - 1)*m], COST_DTYPE_MAX, COST_DTYPE_MAX);
+    }
+
+    // Rest of the matrix
+    for (i = 1; i < n; i++) {
+        for (j = 1; j < m; j++) {
+            scaled_cost[(i * m) + j] = hw_pe(scaled_x[i], scaled_y[j], scaled_cost[(i - 1) * m + j], scaled_cost[(i * m) + j - 1], scaled_cost[(i - 1) * m  + j - 1]);
+        }
+    }
+}
+
+// ===
+
+COST_DTYPE _cost(SIG_DTYPE x, SIG_DTYPE y) {
+    COST_DTYPE cost;
+    if (x > y) cost = (COST_DTYPE) (x - y);
+    else cost = (COST_DTYPE) (y - x);
+    return cost;
+}
+
+COST_DTYPE _min(COST_DTYPE a, COST_DTYPE b, COST_DTYPE c) {
+    COST_DTYPE min = a;
+    if (b < min) min = b;
+    if (c < min) min = c;
+    return min;
+}
+
+void _sw_sdtw(SIG_DTYPE *scaled_x, SIG_DTYPE *scaled_y, int n, int m, COST_DTYPE *scaled_cost) {
+    int i, j;
+    scaled_cost[0] = _cost(scaled_x[0], scaled_y[0]);
+    for (i = 1; i < n; i++) {
+        scaled_cost[i*m] = _cost(scaled_x[i], scaled_y[0]) + scaled_cost[(i - 1)*m];
+    }
+
+    for (j = 1; j < m; j++) {
+        scaled_cost[j] = _cost(scaled_x[0], scaled_y[j]);
+    }
+
+    for (i = 1; i < n; i++) {
+        for (j = 1; j < m; j++) {
+            scaled_cost[(i * m) + j] = _cost(scaled_x[i], scaled_y[j])
+                + _min(scaled_cost[(i - 1) * m + j], scaled_cost[(i * m) + j - 1], scaled_cost[(i - 1) * m  + j - 1]);
+        }
+    }
+}

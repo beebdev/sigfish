@@ -24,9 +24,9 @@ OBJ = $(BUILD_DIR)/main.o \
 	  $(BUILD_DIR)/misc.o \
 	  $(BUILD_DIR)/eval.o \
 
-ifdef fpga
+ifdef test_scaling
 	OBJ +=	$(BUILD_DIR)/haru.o $(BUILD_DIR)/axi_dma.o $(BUILD_DIR)/dtw_accel.o
-	CPPFLAGS += -D FPGA=1 -I HARU/driver/include/
+	CPPFLAGS += -D TEST_SCALING=1 -I HARU/driver/include/
 endif
 
 PREFIX = /usr/local
