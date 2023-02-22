@@ -141,10 +141,6 @@ void free_core(core_t* core,opt_t opt) {
         free(core->reg_list);
     }
 
-    free_ref(core->ref);
-
-    slow5_close(core->sf);
-
 #ifdef TEST_SCALING
     for (int i = 0; i < core->ref->num_ref; i++) {
         free(core->ref->forward_scaled[i]);
@@ -153,6 +149,10 @@ void free_core(core_t* core,opt_t opt) {
     free(core->ref->forward_scaled);
     free(core->ref->reverse_scaled);
 #endif
+
+    free_ref(core->ref);
+
+    slow5_close(core->sf);
 
     free(core);
 }
