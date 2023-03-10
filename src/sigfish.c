@@ -700,7 +700,7 @@ void dtw_scaling(core_t* core,db_t* db){
                 if (cost[(qlen-1)*rlen+j] < my_min_score) {
                     my_min_score = cost[(qlen-1)*rlen+j];
                     db->aln[i].pos_st = j;
-                    db->aln[i].pos_end = db->aln[i].pos_st - 250;
+                    db->aln[i].pos_end = db->aln[i].pos_st - 125;
                     db->aln[i].d = '+';
                 }
             }
@@ -711,12 +711,12 @@ void dtw_scaling(core_t* core,db_t* db){
                 if (cost[(qlen-1)*rlen+j] < my_min_score) {
                     my_min_score = cost[(qlen-1)*rlen+j];
                     db->aln[i].pos_st = rlen - j;
-                    db->aln[i].pos_end = db->aln[i].pos_st + 250;
+                    db->aln[i].pos_end = db->aln[i].pos_st + 125;
                     db->aln[i].d = '-';
                 }
             }
 
-            // === 
+            // ===
             db->aln[i].score = ((float)my_min_score)/SCALING;
             db->aln[i].score2 = ((float)my_min_score)/SCALING;
             db->aln[i].rid = 0;
