@@ -500,134 +500,105 @@ void dtw_single(core_t* core,db_t* db, int32_t i) {
 
         int8_t rna = core->opt.flag & SIGFISH_RNA;
 
-        float *query = (float *)malloc(sizeof(float)*qlen);
+        // float *query = (float *)malloc(sizeof(float)*qlen);
+        SIG_DTYPE *query = (SIG_DTYPE *)malloc(sizeof(SIG_DTYPE)*(qlen));
         MALLOC_CHK(query);
 
         for(int j=0;j<qlen;j++){
             if (!(core->opt.flag & SIGFISH_INV) && rna){
-                query[qlen-1-j] = db->et[i].event[j+start_idx].mean;
+                // query[qlen-1-j] = db->et[i].event[j+start_idx].mean;
+                query[qlen-1-j] = (SIG_DTYPE) (db->et[i].event[j+start_idx].mean * SCALING);
             }
             else{
-                query[j] = db->et[i].event[j+start_idx].mean;
+                // query[j] = db->et[i].event[j+start_idx].mean;
+                query[j] = (SIG_DTYPE) (db->et[i].event[j+start_idx].mean * SCALING);
             }
         }
+        
+        COST_DTYPE my_min_score = COST_DTYPE_MAX;
 
-        //fprintf(stderr,"numref %d\n",core->ref->num_ref)    ;
         for(int j=0;j<core->ref->num_ref;j++){
 
             int32_t rlen =core->ref->ref_lengths[j];
-            float *cost = (float *)malloc(sizeof(float) * qlen * rlen);
+            // float *cost = (float *)malloc(sizeof(float) * qlen * rlen);
+            COST_DTYPE *cost = (COST_DTYPE *)malloc(sizeof(COST_DTYPE)*(qlen*rlen));
             MALLOC_CHK(cost);
 
-            //fprintf(stderr,"%d,%d\n",qlen,rlen);
 
             if(!(core->opt.flag & SIGFISH_DTW)){
-                // fprintf(stderr,"query: ");
-                // for(int k=0;k<qlen;k++){
-                //     fprintf(stderr,"%f,",query[k]);
+                // subsequence(query, core->ref->forward[j], qlen , rlen, cost);
+                _hw_sdtw(query, core->ref->forward_scaled[j], qlen, rlen, cost);
+                // for(int k=(qlen-1)*rlen; k< qlen*rlen; k+=qlen){
+                //     float min_score = INFINITY;
+                //     int32_t min_pos = -1;
+                //     for(int m=0;m<qlen && k+m<qlen*rlen;m++){
+                //         if(cost[k+m] < min_score){
+                //             min_score = cost[k+m];
+                //             min_pos = m+k;
+                //         }
+                //     }
+                //     update_aln(aln, min_score, j, min_pos-(qlen-1)*rlen, '+', cost, qlen, rlen);
                 // }
-                //                 fprintf(stderr,"\n");
-                // fprintf(stderr,"Ref: ");
-
-                // for(int k=0;k<rlen;k++){
-                //     fprintf(stderr,"%f,",core->ref->forward[j][k]);
-                // }
-                // fprintf(stderr,"\n\n");
-                subsequence(query, core->ref->forward[j], qlen , rlen, cost);
-                for(int k=(qlen-1)*rlen; k< qlen*rlen; k+=qlen){
-                    float min_score = INFINITY;
-                    int32_t min_pos = -1;
-                    for(int m=0;m<qlen && k+m<qlen*rlen;m++){
-                        if(cost[k+m] < min_score){
-                            min_score = cost[k+m];
-                            min_pos = m+k;
-                        }
+                my_min_score = cost[(qlen-1)*rlen];
+                for (int k = 0; k < rlen; k++) {
+                    if (cost[(qlen-1)*rlen+k] < my_min_score) {
+                        my_min_score = cost[(qlen-1)*rlen+k];
+                        db->aln[i].pos_st = k;
+                        db->aln[i].pos_end = db->aln[i].pos_st - 125;
+                        db->aln[i].d = '+';
+                        db->aln[i].rid = j;
                     }
-                    update_aln(aln, min_score, j, min_pos-(qlen-1)*rlen, '+', cost, qlen, rlen);
                 }
-
-                // for(int k=(qlen-1)*rlen; k< qlen*rlen; k++){
-                //     update_aln(aln, cost[k], j, k-(qlen-1)*rlen, '+',);
-                //     // if(cost[k]<score){
-                //     //     score2=score;
-                //     //     score = cost[k];
-                //     //     pos = k-(qlen-1)*rlen;
-                //     //     rid = j;
-                //     //     d = '+';
-                //     // }
-                // }
             }
-            else{
-                std_dtw(query, core->ref->forward[j], qlen , rlen, cost, 0);
-                int k=qlen*rlen-1;
-                update_aln(aln, cost[k], j, k-(qlen-1)*rlen, '+', cost, qlen, rlen);
-                // if(cost[k]<score){
-                //     score2=score;
-                //     score = cost[k];
-                //     pos = k-(qlen-1)*rlen;
-                //     rid = j;
-                //     d = '+';
-                // }
-            }
-            // for(int k=0;k<qlen;k++){
-            //     for(int l=0;l<rlen;l++){
-            //         fprintf(stderr,"%f,",cost[k*rlen+l]);
-            //     }
-            //     fprintf(stderr,"\n");
+            // else{
+            //     std_dtw(query, core->ref->forward[j], qlen , rlen, cost, 0);
+            //     int k=qlen*rlen-1;
+            //     update_aln(aln, cost[k], j, k-(qlen-1)*rlen, '+', cost, qlen, rlen);
             // }
-            // fprintf(stderr,"\n");
-            // exit(0);
 
+            /* Reverse */
             if (!rna) {
-                subsequence(query, core->ref->reverse[j], qlen , rlen, cost);
+                // subsequence(query, core->ref->reverse[j], qlen , rlen, cost);
+                _hw_sdtw(query, core->ref->reverse_scaled[j], qlen, rlen, cost);
 
-                for(int k=(qlen-1)*rlen; k< qlen*rlen; k+=qlen){
-                    float min_score = INFINITY;
-                    int32_t min_pos = -1;
-                    for(int m=0; m<qlen && k+m<qlen*rlen; m++){
-                        if(cost[k+m] < min_score){
-                            min_score = cost[k+m];
-                            min_pos = m+k;
-                        }
-                    }
-                    update_aln(aln, min_score, j, min_pos-(qlen-1)*rlen, '-', cost, qlen, rlen);
-                }
-
-                // for(int k=(qlen-1)*rlen; k< qlen*rlen; k++){
-                //     update_aln(aln, cost[k], j, k-(qlen-1)*rlen, '-');
-                //     // if(cost[k]<score){
-                //     //     score2=score;
-                //     //     score = cost[k];
-                //     //     pos = k-(qlen-1)*rlen;
-                //     //     rid = j;
-                //     //     d = '-';
-                //     // }
+                // for(int k=(qlen-1)*rlen; k< qlen*rlen; k+=qlen){
+                //     float min_score = INFINITY;
+                //     int32_t min_pos = -1;
+                //     for(int m=0; m<qlen && k+m<qlen*rlen; m++){
+                //         if(cost[k+m] < min_score){
+                //             min_score = cost[k+m];
+                //             min_pos = m+k;
+                //         }
+                //     }
+                //     update_aln(aln, min_score, j, min_pos-(qlen-1)*rlen, '-', cost, qlen, rlen);
                 // }
+
+                for (int k = 0; k < rlen; k++) {
+                    if (cost[(qlen-1)*rlen+k] < my_min_score) {
+                        my_min_score = cost[(qlen-1)*rlen+k];
+                        db->aln[i].pos_st = rlen - k;
+                        db->aln[i].pos_end = db->aln[i].pos_st + 125;
+                        db->aln[i].d = '-';
+                        db->aln[i].rid = j;
+                    }
+                }
             }
-
             free(cost);
-
         }
-
         free(query);
+        // db->aln[i].score = aln[SECONDARY_CAP-1].score;
+        // db->aln[i].score2 = aln[SECONDARY_CAP-2].score;
+        // db->aln[i].pos_st = aln[SECONDARY_CAP-1].d == '+' ? aln[SECONDARY_CAP-1].pos_st : core->ref->ref_lengths[aln[SECONDARY_CAP-1].rid] - aln[SECONDARY_CAP-1].pos_end  ;
+        // db->aln[i].pos_end = aln[SECONDARY_CAP-1].d == '+' ? aln[SECONDARY_CAP-1].pos_end : core->ref->ref_lengths[aln[SECONDARY_CAP-1].rid] - aln[SECONDARY_CAP-1].pos_st  ;
+        // db->aln[i].rid = aln[SECONDARY_CAP-1].rid;
+        // db->aln[i].d = aln[SECONDARY_CAP-1].d;
 
-
-        db->aln[i].score = aln[SECONDARY_CAP-1].score;
-        db->aln[i].score2 = aln[SECONDARY_CAP-2].score;
-        db->aln[i].pos_st = aln[SECONDARY_CAP-1].d == '+' ? aln[SECONDARY_CAP-1].pos_st : core->ref->ref_lengths[aln[SECONDARY_CAP-1].rid] - aln[SECONDARY_CAP-1].pos_end  ;
-        db->aln[i].pos_end = aln[SECONDARY_CAP-1].d == '+' ? aln[SECONDARY_CAP-1].pos_end : core->ref->ref_lengths[aln[SECONDARY_CAP-1].rid] - aln[SECONDARY_CAP-1].pos_st  ;
-        db->aln[i].rid = aln[SECONDARY_CAP-1].rid;
-        db->aln[i].d = aln[SECONDARY_CAP-1].d;
-
-        int mapq=(int)round(500*(db->aln[i].score2-db->aln[i].score)/db->aln[i].score);
-        if(mapq>60){
-            mapq=60;
-        }
-        db->aln[i].mapq = mapq;
+        db->aln[i].score = ((float)my_min_score)/SCALING;
+        db->aln[i].score2 = ((float)my_min_score)/SCALING;
+        db->aln[i].mapq = 60;
 
         free(aln);
     }
-
 }
 
 
@@ -636,13 +607,14 @@ void work_per_single_read(core_t* core,db_t* db, int32_t i){
     event_single(core,db,i);
     normalise_single(core,db,i);
 
-#ifndef TEST_SCALING
+// #ifndef TEST_SCALING
     dtw_single(core,db,i);
-#endif
+// #endif
 
 }
 
-#ifdef TEST_SCALING
+// #ifdef TEST_SCALING
+#if 0
 
 void dtw_scaling(core_t* core,db_t* db){
     int32_t i=0;
@@ -737,7 +709,8 @@ void process_db(core_t* core,db_t* db){
     double proc_start = realtime();
     work_db(core, db, work_per_single_read);
 
-#ifdef TEST_SCALING
+// #ifdef TEST_SCALING
+#if 0
     dtw_scaling(core,db);
 #endif
 

@@ -67,7 +67,7 @@ float se_dist(float x, float y)
 // Returns the (unnormalized) minimum-distance warp path
 // between time series x and y and the cost matrix C
 float
-std_dtw(float *x, float *y, int n, int m, float *cost, int squared)
+std_dtw(float *x, float *y, int64_t n, int64_t m, float *cost, int64_t squared)
 {
   int i, j;
   float (*dist)(float, float);
@@ -96,7 +96,7 @@ std_dtw(float *x, float *y, int n, int m, float *cost, int squared)
 // Compute the warp path starting at cost[startx, starty]
 // If startx = -1 -> startx = n-1; if starty = -1 -> starty = m-1
 int
-path(float *cost, int n, int m, int startx, int starty, Path *p)
+path(float *cost, int64_t n, int64_t m, int64_t startx, int64_t starty, Path *p)
 {
   int i, j, k, z1, z2;
   int *px;
@@ -169,7 +169,7 @@ path(float *cost, int n, int m, int startx, int starty, Path *p)
 
 //
 void
-subsequence(float *x, float *y, int n, int m, float *cost)
+subsequence(float *x, float *y, int64_t n, int64_t m, float *cost)
 {
   int i, j;
 
@@ -190,7 +190,7 @@ subsequence(float *x, float *y, int n, int m, float *cost)
 
 
 int
-subsequence_path(float *cost, int n, int m, int starty, Path *p)
+subsequence_path(float *cost, int64_t n, int64_t m, int64_t starty, Path *p)
 {
   int i, z1, z2;
   int a_star;
@@ -269,7 +269,7 @@ void hw_subsequence(float *x, float *y, int n, int m, float *cost)
     }
 }
 
-void _hw_sdtw(SIG_DTYPE *scaled_x, SIG_DTYPE *scaled_y, int n, int m, COST_DTYPE *scaled_cost) {
+void _hw_sdtw(SIG_DTYPE *scaled_x, SIG_DTYPE *scaled_y, int64_t n, int64_t m, COST_DTYPE *scaled_cost) {
     int i, j;
 
     // First row
@@ -307,7 +307,7 @@ COST_DTYPE _min(COST_DTYPE a, COST_DTYPE b, COST_DTYPE c) {
     return min;
 }
 
-void _sw_sdtw(SIG_DTYPE *scaled_x, SIG_DTYPE *scaled_y, int n, int m, COST_DTYPE *scaled_cost) {
+void _sw_sdtw(SIG_DTYPE *scaled_x, SIG_DTYPE *scaled_y, int64_t n, int64_t m, COST_DTYPE *scaled_cost) {
     int i, j;
     scaled_cost[0] = _cost(scaled_x[0], scaled_y[0]);
     for (i = 1; i < n; i++) {
