@@ -325,3 +325,112 @@ void _sw_sdtw(SIG_DTYPE *scaled_x, SIG_DTYPE *scaled_y, int64_t n, int64_t m, CO
         }
     }
 }
+
+int
+path_DS(COST_DTYPE *cost, int64_t n, int64_t m, int64_t startx, int64_t starty, Path *p)
+{
+  int i, j, k, z1, z2;
+  int *px;
+  int *py;
+  COST_DTYPE min_cost;
+
+  if ((startx >= n) || (starty >= m))
+    return 0;
+
+  if (startx < 0)
+    startx = n - 1;
+
+  if (starty < 0)
+    starty = m - 1;
+
+  i = startx;
+  j = starty;
+  k = 1;
+
+  // allocate path for the worst case
+  px = (int *) malloc ((startx+1) * (starty+1) * sizeof(int));
+  py = (int *) malloc ((startx+1) * (starty+1) * sizeof(int));
+
+  px[0] = i;
+  py[0] = j;
+
+  while ((i > 0) || (j > 0))
+    {
+      if (i == 0)
+	j--;
+      else if (j == 0)
+	i--;
+      else
+	{
+    // min3
+    min_cost = cost[(i-1)*m+j];
+    if (cost[(i-1)*m+(j-1)] < min_cost) min_cost = cost[(i-1)*m+(j-1)];
+    if (cost[i*m+(j-1)] < min_cost) min_cost = cost[i*m+(j-1)];
+
+	  if (cost[(i-1)*m+(j-1)] == min_cost)
+	    {
+	      i--;
+	      j--;
+	    }
+	  else if (cost[i*m+(j-1)] == min_cost)
+	    j--;
+	  else
+	    i--;
+	}
+
+      px[k] = i;
+      py[k] = j;
+      k++;
+    }
+
+  p->px = (int *) malloc (k * sizeof(int));
+  p->py = (int *) malloc (k * sizeof(int));
+  for (z1=0, z2=k-1; z1<k; z1++, z2--)
+    {
+      p->px[z1] = px[z2];
+      p->py[z1] = py[z2];
+    }
+  p->k = k;
+
+  free(px);
+  free(py);
+
+  return 1;
+}
+
+int
+subsequence_path_DS(COST_DTYPE *cost, int64_t n, int64_t m, int64_t starty, Path *p)
+{
+  int i, z1, z2;
+  int a_star;
+  int *tmpx, *tmpy;
+
+  // find path
+  if (!path_DS(cost, n, m, -1, starty, p))
+    return 0;
+
+  // find a_star
+  a_star = 0;
+  for (i=1; i<p->k; i++)
+    if (p->px[i] == 0)
+      a_star++;
+    else
+      break;
+
+  // rebuild path
+  tmpx = p->px;
+  tmpy = p->py;
+  p->px = (int *) malloc ((p->k-a_star) * sizeof(int));
+  p->py = (int *) malloc ((p->k-a_star) * sizeof(int));
+  for (z1=0, z2=a_star; z2<p->k; z1++, z2++)
+    {
+      p->px[z1] = tmpx[z2];
+      p->py[z1] = tmpy[z2];
+    }
+  p->k = p->k-a_star;
+
+  free(tmpx);
+  free(tmpy);
+
+  return 1;
+}
